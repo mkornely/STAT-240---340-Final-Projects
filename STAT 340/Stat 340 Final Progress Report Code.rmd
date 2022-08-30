@@ -1,0 +1,327 @@
+---
+title: "Stat 340 progress report"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(caret)
+```
+
+
+```{r}
+inmates <- read.csv("Inmates_Under_Custody__Beginning_2008.csv")
+```
+```{r}
+inmates %>%
+  filter(Snapshot.Year >= 2016) %>%
+  group_by(Most.Serious.Crime) %>% summarise(count=n()) %>% arrange(desc(count))
+```
+
+```{r}
+labs <- c(paste(seq(17, 95, by = 10), seq(17 + 10 - 1, 100 - 1, by = 10),
+                sep = "-"))
+labs
+```
+
+
+```{r}
+inmatesFiltered<- inmates %>%
+  filter(Snapshot.Year >= 2016) %>%
+  filter(Most.Serious.Crime == "MURDER 2ND"| Most.Serious.Crime == "ROBBERY 1ST"| Most.Serious.Crime == "C POS WEAPON 2ND" | Most.Serious.Crime == "MANSLAUGHTER 1ST"| Most.Serious.Crime == "CSCS 3RD"| Most.Serious.Crime == "BURGLARY 2ND"| Most.Serious.Crime == "CPCS 3RD"| Most.Serious.Crime == "BURGLARY 3RD"| Most.Serious.Crime == "RAPE 1ST"| Most.Serious.Crime == "ATT MURDER 2ND") %>%
+  filter(Race.Ethnicity != "UNKNOWN") %>%
+  filter(Facility.Security.Level == "MAXIMUM SECURITY" | Facility.Security.Level == "MEDIUM  SECURITY") %>%
+  mutate(Race.Ethnicity = case_when(
+    str_detect(Race.Ethnicity,"OTHER") ~ "OTHER",
+             str_detect(Race.Ethnicity,"WHITE") ~ "WHITE",
+             str_detect(Race.Ethnicity,"BLACK") ~ "BLACK",
+             str_detect(Race.Ethnicity,"HISPANIC") ~ "HISPANIC",
+    TRUE ~ "OTHER"
+  )) 
+
+inmatesFiltered$AgeGroup <- cut(inmatesFiltered$Current.Age, breaks = c(seq(17, 95, by = 10), Inf), labels = labs, right = FALSE) 
+
+inmatesFiltered <- inmatesFiltered %>% drop_na()
+
+```
+
+
+```{r}
+inmatesFiltered$ID <- seq.int(nrow(inmatesFiltered))
+
+countys<-read_csv("county_complete.csv")%>% filter(state=="New York")%>%mutate(County.of.Indictment= toupper(name) )%>%mutate(County.of.Indictment=str_sub(County.of.Indictment,1,nchar(County.of.Indictment)-7))
+
+
+
+
+inmateshotencoding<- inmatesFiltered%>%select("Gender","Latest.Admission.Type","Most.Serious.Crime","Race.Ethnicity", "ID", "Snapshot.Year")%>%mutate(Snapshot.Year=as.character(Snapshot.Year))
+
+dmy <- dummyVars(" ~ .", data = inmateshotencoding)
+trsf <- data.frame(predict(dmy, newdata = inmateshotencoding))
+
+combined_final_hot_encoded<-inmatesFiltered %>% inner_join(trsf, by="ID")%>%left_join(countys,by="County.of.Indictment")
+
+no_county<-inmatesFiltered %>% inner_join(trsf, by="ID")
+
+
+```
+```{r}
+filtered<-no_county%>%select(-Snapshot.Year, -Latest.Admission.Type, -County.of.Indictment, -Gender, -Most.Serious.Crime, -Housing.Facility, -Facility.Security.Level, -Race.Ethnicity, -AgeGroup, -ID, )
+#prcomp(filtered, scale=TRUE)
+
+#colnames(filtered)
+```
+
+```{r}
+#colnames(countys)
+```
+
+```{r}
+plot1 <- inmatesFiltered %>%
+  filter(Most.Serious.Crime == "MURDER 2ND")
+
+ggplot(plot1, aes(x=factor(Facility.Security.Level))) +
+  geom_bar() + facet_wrap(~AgeGroup) + theme(axis.text.x = element_text(angle = 60, hjust=1)) +
+  xlab("Security Level") +
+  ggtitle("2nd Degree Murder Security Level Seperated by Age Group")
+
+```
+
+
+```{r}
+#finding proportions of each age group in max and medium security levels
+
+
+use<- combined_final_hot_encoded %>%
+  select(AgeGroup,Facility.Security.Level) %>%
+  #filter(Facility.Security.Level == "MAXIMUM SECURITY")%>%
+  mutate(total_ages =case_when(AgeGroup=="17-26"~sum(AgeGroup=="17-26"),AgeGroup=="27-36"~sum(AgeGroup=="27-36"), AgeGroup=="37-46"~sum(AgeGroup=="37-46"), AgeGroup=="47-56"~sum(AgeGroup=="47-56"), AgeGroup=="57-66"~sum(AgeGroup=="57-66"), AgeGroup=="67-76"~sum(AgeGroup=="67-76"), AgeGroup=="77-86"~sum(AgeGroup=="77-86"), AgeGroup=="87-96"~sum(AgeGroup=="87-96")),
+         total_max = case_when(AgeGroup=="17-26" & Facility.Security.Level=="MAXIMUM SECURITY"~sum(AgeGroup=="17-26"& Facility.Security.Level=="MAXIMUM SECURITY"), AgeGroup=="27-36" & Facility.Security.Level=="MAXIMUM SECURITY"~sum(AgeGroup=="27-36"& Facility.Security.Level=="MAXIMUM SECURITY"), AgeGroup=="37-46" & Facility.Security.Level=="MAXIMUM SECURITY" ~sum(AgeGroup=="37-46" & Facility.Security.Level=="MAXIMUM SECURITY"), AgeGroup=="47-56"& Facility.Security.Level=="MAXIMUM SECURITY"~sum(AgeGroup=="47-56"& Facility.Security.Level=="MAXIMUM SECURITY"), AgeGroup=="57-66"& Facility.Security.Level=="MAXIMUM SECURITY"~sum(AgeGroup=="57-66"& Facility.Security.Level=="MAXIMUM SECURITY"), AgeGroup=="67-76"& Facility.Security.Level=="MAXIMUM SECURITY"~sum(AgeGroup=="67-76"& Facility.Security.Level=="MAXIMUM SECURITY"), AgeGroup=="77-86"& Facility.Security.Level=="MAXIMUM SECURITY"~sum(AgeGroup=="77-86"& Facility.Security.Level=="MAXIMUM SECURITY"), AgeGroup=="87-96"& Facility.Security.Level=="MAXIMUM SECURITY"~sum(AgeGroup=="87-96"& Facility.Security.Level=="MAXIMUM SECURITY")),
+         Max_Security = total_max/total_ages,
+         Medium_Security=1-Max_Security)%>%
+  select(-Facility.Security.Level)%>%
+  unique()%>%
+  drop_na()
+
+```
+
+```{r}
+#bar plot showing proportions of each age group in max and medium security levels
+graph <- use %>%
+  select(AgeGroup,Max_Security,Medium_Security)
+
+library(reshape2)
+df.long2<-melt(graph)
+ggplot(df.long2,aes(AgeGroup,value,fill=variable))+
+     geom_bar(stat="identity",position="dodge")  + theme(axis.text.x = element_text(angle = 60, hjust=1)) + ylab('Proportion') + xlab("Age Group") + ggtitle("Proportion of Age Groups in Maximum or Medium Security")
+```
+
+
+```{r}
+
+#finding proportions of each race/ethnicity group in max and medium security levels
+
+use2 <- combined_final_hot_encoded %>%
+  select(Race.Ethnicity,Facility.Security.Level) %>%
+  #filter(Facility.Security.Level == "MAXIMUM SECURITY")%>%
+  mutate(total_races =case_when(Race.Ethnicity=="WHITE"~sum(Race.Ethnicity=="WHITE"),Race.Ethnicity=="BLACK"~sum(Race.Ethnicity=="BLACK"), Race.Ethnicity=="HISPANIC"~sum(Race.Ethnicity=="HISPANIC"), Race.Ethnicity=="OTHER"~sum(Race.Ethnicity=="OTHER")),total_max = case_when(Race.Ethnicity=="WHITE" & Facility.Security.Level=="MAXIMUM SECURITY"~sum(Race.Ethnicity=="WHITE"& Facility.Security.Level=="MAXIMUM SECURITY"), Race.Ethnicity=="BLACK" & Facility.Security.Level=="MAXIMUM SECURITY"~sum(Race.Ethnicity=="BLACK"& Facility.Security.Level=="MAXIMUM SECURITY"), Race.Ethnicity=="HISPANIC" & Facility.Security.Level=="MAXIMUM SECURITY" ~sum(Race.Ethnicity=="HISPANIC" & Facility.Security.Level=="MAXIMUM SECURITY"), Race.Ethnicity=="OTHER"& Facility.Security.Level=="MAXIMUM SECURITY"~sum(Race.Ethnicity=="OTHER"& Facility.Security.Level=="MAXIMUM SECURITY")),
+         Max_Security = total_max/total_races,
+         Medium_Security=1-Max_Security)%>%
+  select(-Facility.Security.Level)%>%
+  unique()%>%
+  drop_na()
+
+
+
+```
+
+
+```{r}
+#bar plot showing proportions of race/ethnicity group in max and medium security levels
+graph2 <- use2 %>%
+  select(Race.Ethnicity,Max_Security,Medium_Security)
+
+
+df.long3<-melt(graph2)
+ggplot(df.long3,aes(Race.Ethnicity,value,fill=variable))+
+     geom_bar(stat="identity",position="dodge")  + theme(axis.text.x = element_text(angle = 60, hjust=1)) + ylab('Proportion') + xlab("Race/Ethnicity") + ggtitle("Proportion of Race/Ethnicity Groups in Maximum or Medium Security")
+```
+
+
+```{r}
+#finding proportions of each gender in max and medium security levels
+
+use3 <- combined_final_hot_encoded %>%
+  select(Gender,Facility.Security.Level) %>%
+  #filter(Facility.Security.Level == "MAXIMUM SECURITY")%>%
+  mutate(total_genders =case_when(Gender=="FEMALE"~sum(Gender=="FEMALE"),Gender=="MALE"~sum(Gender=="MALE")),total_max = case_when(Gender=="FEMALE" & Facility.Security.Level=="MAXIMUM SECURITY"~sum(Gender=="FEMALE"& Facility.Security.Level=="MAXIMUM SECURITY"), Gender=="MALE" & Facility.Security.Level=="MAXIMUM SECURITY"~sum(Gender=="MALE"& Facility.Security.Level=="MAXIMUM SECURITY")),
+         Max_Security = total_max/total_genders,
+         Medium_Security=1-Max_Security)%>%
+  select(-Facility.Security.Level)%>%
+  unique()%>%
+  drop_na()
+```
+
+```{r}
+#bar plot showing proportions of genders in max and medium security levels
+
+graph3 <- use3 %>%
+  select(Gender,Max_Security,Medium_Security)
+
+
+df.long4<-melt(graph3)
+ggplot(df.long4,aes(Gender,value,fill=variable))+
+     geom_bar(stat="identity",position="dodge")  + theme(axis.text.x = element_text(angle = 60, hjust=1)) + ylab('Proportion') + xlab("Gender") + ggtitle("Proportion of Genders in Maximum or Medium Security")
+```
+
+
+
+
+```{r}
+# Hot Econding
+inmatesEncoded <-  combined_final_hot_encoded  %>% mutate(
+         Facility.Security.Level = as.numeric(sub("MAXIMUM SECURITY",1,
+                                                  sub("MEDIUM  SECURITY",0,Facility.Security.Level))))
+
+inmatesEncoded <-  inmatesEncoded %>% mutate(
+         Gender = as.numeric(sub("MALE",1, sub("FEMALE",0,Gender))))
+
+inmatesEncoded <-  inmatesEncoded %>% mutate(
+         Race.Ethnicity = as.numeric(sub("BLACK",3, sub("WHITE",2, sub("HISPANIC", 1, sub("OTHER",0,Race.Ethnicity))))))
+
+
+
+inmatesEncoded <-  inmatesEncoded %>% mutate(
+         AgeGroup = as.numeric(sub("17-26",7, sub("27-36",6, sub("37-46", 5, sub("47-56", 4, sub("57-66", 3, sub("67-76", 2, sub("77-86", 1,  sub("87-96",0,AgeGroup))))))))))
+  
+  
+Murder2nd <- inmatesEncoded %>%
+  filter(Most.Serious.Crime == "MURDER 2ND")
+
+#fit <- glm(Facility.Security.Level ~ 1 + AgeGroup + Race.Ethnicity + Gender, data=Murder2nd)
+#summary(fit)
+inmatesEncoded %>%
+  group_by(Most.Serious.Crime) %>% summarise(count=n()) %>% arrange(desc(count))
+inmatesEncoded
+```
+
+
+
+```{r}
+## Murder 2nd
+Murder2nd <- inmatesEncoded %>%
+  filter(Most.Serious.Crime == "MURDER 2ND")
+fit <- glm(Facility.Security.Level ~ 1 + AgeGroup + Race.Ethnicity + Gender+ Latest.Admission.TypeNEW.COURT.COMMITMENT+ Latest.Admission.TypeOTHER+Snapshot.Year2016+ Snapshot.Year2017+Snapshot.Year2018+ Snapshot.Year2019+ Snapshot.Year2020, data=Murder2nd)
+summary(fit)
+```
+
+```{r}
+# Robbery First
+Robbery1st <- inmatesEncoded %>%
+  filter(Most.Serious.Crime == "ROBBERY 1ST")
+fit <- glm(Facility.Security.Level ~ 1 + AgeGroup + Race.Ethnicity + Gender+ Latest.Admission.TypeNEW.COURT.COMMITMENT+ Latest.Admission.TypeOTHER+Snapshot.Year2016+ Snapshot.Year2017+Snapshot.Year2018+ Snapshot.Year2019+ Snapshot.Year2020   , data=Robbery1st)
+summary(fit)
+```
+
+C POS WEAPON 2ND
+
+```{r}
+CposWeapon2nd <- inmatesEncoded %>%
+  filter(Most.Serious.Crime == "C POS WEAPON 2ND")
+fit <- glm(Facility.Security.Level ~ 1 + AgeGroup + Race.Ethnicity + Gender+ Latest.Admission.TypeNEW.COURT.COMMITMENT+ Latest.Admission.TypeOTHER+Snapshot.Year2016+ Snapshot.Year2017+Snapshot.Year2018+ Snapshot.Year2019+ Snapshot.Year2020, data=CposWeapon2nd )
+summary(fit)
+```
+```{r}
+rape<- inmatesEncoded %>%
+  filter(Most.Serious.Crime == "RAPE 1ST")
+fit <- glm(Facility.Security.Level ~ 1 + AgeGroup + Race.Ethnicity + Gender+ Latest.Admission.TypeNEW.COURT.COMMITMENT+ Latest.Admission.TypeOTHER+Snapshot.Year2016+ Snapshot.Year2017+Snapshot.Year2018+ Snapshot.Year2019+ Snapshot.Year2020, data=rape )
+summary(fit)
+  
+  
+```
+```{r}
+
+BURGLARY3RD<- inmatesEncoded %>%
+  filter(Most.Serious.Crime == "BURGLARY 3RD")
+fit <- glm(Facility.Security.Level ~ 1 + AgeGroup + Race.Ethnicity + Gender+ Latest.Admission.TypeNEW.COURT.COMMITMENT+ Latest.Admission.TypeOTHER+Snapshot.Year2016+ Snapshot.Year2017+Snapshot.Year2018+ Snapshot.Year2019+ Snapshot.Year2020, data=BURGLARY3RD )
+summary(fit)
+  
+```
+
+```{r}
+ATTMURDER2ND<- inmatesEncoded %>%
+  filter(Most.Serious.Crime == "ATT MURDER 2ND")
+fit <- glm(Facility.Security.Level ~ 1 + AgeGroup + Race.Ethnicity + Gender+ Latest.Admission.TypeNEW.COURT.COMMITMENT+ Latest.Admission.TypeOTHER+Snapshot.Year2016+ Snapshot.Year2017+Snapshot.Year2018+ Snapshot.Year2019+ Snapshot.Year2020, data=ATTMURDER2ND,family="binomial")
+summary(fit)
+```
+
+```{r}
+CPCS3RD<- inmatesEncoded %>%
+  filter(Most.Serious.Crime == "CPCS 3RD")
+fit <- glm(Facility.Security.Level ~ 1 + AgeGroup + Race.Ethnicity + Gender+ Latest.Admission.TypeNEW.COURT.COMMITMENT+ Latest.Admission.TypeOTHER+Snapshot.Year2016+ Snapshot.Year2017+Snapshot.Year2018+ Snapshot.Year2019+ Snapshot.Year2020, data=CPCS3RD )
+summary(fit)
+```
+
+
+
+
+
+MANSLAUGHTER 1ST
+
+
+
+```{r}
+MANSLAUGHTER1ST <- inmatesEncoded %>%
+  filter(Most.Serious.Crime == "MANSLAUGHTER 1ST")
+fit <- glm(Facility.Security.Level ~ 1 + AgeGroup + Race.Ethnicity + Gender+ Latest.Admission.TypeNEW.COURT.COMMITMENT+ Latest.Admission.TypeOTHER+Snapshot.Year2016+ Snapshot.Year2017+Snapshot.Year2018+ Snapshot.Year2019+ Snapshot.Year2020, data=MANSLAUGHTER1ST)
+summary(fit)
+```
+
+BURGLARY 2ND
+```{r}
+BURGLARY2ND <- inmatesEncoded %>%
+  filter(Most.Serious.Crime == "BURGLARY 2ND")
+fit <- glm(Facility.Security.Level ~ 1 + AgeGroup + Race.Ethnicity + Gender+ Latest.Admission.TypeNEW.COURT.COMMITMENT+ Latest.Admission.TypeOTHER+Snapshot.Year2016+ Snapshot.Year2017+Snapshot.Year2018+ Snapshot.Year2019+ Snapshot.Year2020, data=BURGLARY2ND )
+summary(fit)
+
+```
+
+
+CSCS 3RD
+```{r}
+CSCS3RD <- inmatesEncoded %>%
+  filter(Most.Serious.Crime == "CSCS 3RD")
+fit <- glm(Facility.Security.Level ~ 1 + AgeGroup + Race.Ethnicity + Gender+ Latest.Admission.TypeNEW.COURT.COMMITMENT+ Latest.Admission.TypeOTHER+Snapshot.Year2016+ Snapshot.Year2017+Snapshot.Year2018+ Snapshot.Year2019+ Snapshot.Year2020, data=CSCS3RD)
+summary(fit)
+
+```
+
+
+```{r}
+year2016<-inmatesEncoded%>%filter(Snapshot.Year=="2016")
+
+fit<-glm(Facility.Security.Level ~ 1 + AgeGroup + Race.Ethnicity + Gender +Latest.Admission.TypeNEW.COURT.COMMITMENT+ Latest.Admission.TypeOTHER +some_college_2016 +hs_grad_2016+bachelors_2016+ poverty_2016+ unemployed_2016, data=year2016)
+summary(fit)
+```
+
+```{r}
+year2017<-inmatesEncoded%>%filter(Snapshot.Year=="2017")
+fit<-glm(Facility.Security.Level ~ 1 + AgeGroup + Race.Ethnicity + Gender +Latest.Admission.TypeNEW.COURT.COMMITMENT+ Latest.Admission.TypeOTHER +some_college_2017 +hs_grad_2017+bachelors_2017+ poverty_2017+ median_household_income_2017+uninsured_2017+speak_english_only_2017, data=year2017)
+summary(fit)
+```
+
+```{r}
+year2019<-inmatesEncoded%>%filter(Snapshot.Year=="2019")
+
+fit<-glm(Facility.Security.Level ~ 1 + AgeGroup + Race.Ethnicity + Gender +Latest.Admission.TypeNEW.COURT.COMMITMENT+ Latest.Admission.TypeOTHER+bachelors_2019+households_speak_limited_english_2019+ households_speak_other_2019+households_speak_spanish_2019+housing_mobile_homes_2019+hs_grad_2019+mean_household_income_2019+median_individual_income_2019+poverty_2019+uninsured_2019, data=year2019)
+summary(fit)
+```
+
+```{r}
+#pairs(inmatesEncoded%>%select(where(is.numeric)))
+```
+

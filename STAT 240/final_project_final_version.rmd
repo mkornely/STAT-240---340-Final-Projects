@@ -1,0 +1,389 @@
+---
+title: "Final Project "
+author: "Danavi Wollin, Yuning Wang, Evan Senter, and Michael Kornely"
+date: "4/26/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(lubridate)
+library(modelr)
+library(ggplot2)
+source("../scripts/viridis.R")
+source("../scripts/ggprob.R")
+twitch <-  read_csv("../data/twitchdata-update.csv")
+```
+
+## Introduction:
+
+
+For our Stats 240 project, we decided to use a dataset about Twitch streamer’s stream statistics we found on Kaggle at this url (https://www.kaggle.com/aayushmishra1512/twitchdata). The data was collected via web-scraping of various platforms that keep track of the streamer statistics and it was compiled into a csv file. The top 1000 were  " defined by the website metrics from where the data was taken. It was done using the different columns to compute their own metric to define a TOP streamer." according to the dataset's creator. Using this dataset, we hope to explore what variables influence a streamer’s success ( in our analysis, measured by the number of followers they have).
+
+## Thesis
+
+Based on the variables collected for each streamer, we seek to explore and answer if there is a strong linear relationship between the most important stream statistics, and a streamer's success. For the intents and purposes of this analysis, the success of the streamer is represented by the amount of followers a streamer has. This exploration will allow us to determine if there is any strong linear relationship between followers and the various important stream statistics: watch time, average viewers, stream time, and maturity . This strong linear relationship can provide insight surrounding what a novel streamer should focus on so they can grow their career somewhat predictably.
+
+
+## Background
+
+Twitch is a live streaming platform that focuses on games and Esports live streaming (i.e video games and digital media) . People who want to broadcast their game playing content can register as streamers on Twitch. The dataset,originally called twitch data, contains statistics of the top 1000 live streamers on Twitch. This dataset has 11 columns:
+
+
+
+1. **Channel Name**:  the username of the Twitch Streamer.
+
+2. **Watch Time**: total time users have spent watching the channel in minutes.
+
+3. **Stream Time**: total time spent actively streaming by the channel. 
+
+4. **Peak Viewers**: most viewers to ever tune in to the channel at one time.
+
+5. **Views Gained**: total number of views for the channel. 
+
+6. **Average Viewers**: how many viewers usually tune in to a stream.
+
+7. **Followers**: how many followers the channel has. 
+
+8. **Followers Gained**: how many followers the channel has gained in an unspecified timeframe, leading to insecurity within the data of this column. 
+
+9. **Partnered**: True or False statement if the channel is partnered with the service to monetize their stream (https://www.twitch.tv/p/partners/) 
+
+10. **Mature**: True or False statement if the channel produces mature (explicit) content (i.e Rated M Video Games or cursing in the stream). 
+
+11. **Language**: What language the streamer speaks on stream . 
+
+# Initial exploration of Variables
+
+After conducting our own research, out of the variables present in the dataset, we have isolated the most important stream statisitcs. We have determined that we are going to run correlation tests on how maturity, average viewers, watch time, and stream time effect the number of followers a channel has. We were also initially curious about how the language a streamer speaks can effect the number of followers. However, the majority of streamers in the top 1000 speak English, so there is not enough substantial data to draw conclusive evidence. The graph below shows the distribution of languages for the top 1000 streamers.The data table as well shows the most prevalent languages
+
+## Graph and Table of Languages
+
+```{r,echo=FALSE, warning=FALSE, message=FALSE}
+ggplot(twitch)+
+  geom_histogram(aes(x=Language),stat="count", col="red", fill="white")+
+  scale_x_discrete(guide = guide_axis(n.dodge=3)) +
+  ggtitle("Numbers of Streamers per Language") +
+  xlab("Language") +
+  ylab("Number of Streamers")
+
+languagedata<- twitch %>% group_by(Language)%>% summarize(Percentage= (n()/1000)*100) %>%arrange(desc(Percentage))
+
+```
+
+As this graph displays, the number of streamers that speak English is far greater than all other languages. This observation implies that the plurality of viewers prefer a streamer who speaks English (48.5% of Top Streamers are English speaking). Since other languages are underrepresented in this dataset, the results from this research might not be applicable to a streamer who does not speak English while streaming. Conversely, other languages might skew the data away from the potential linear relationships we are analyzing.
+
+## Graph and Table of Partnered Status 
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+ggplot(twitch)+
+  geom_histogram(aes(x=Partnered),stat="count", col="red", fill="white")+
+   ggtitle("Numbers of Streamers By Partnered Status") +xlab("Partnered") +
+  ylab("Number of Streamers")
+
+partnereddata<- twitch %>% group_by(Partnered)%>% summarize(Percentage= (n()/1000)*100) %>%arrange(desc(Percentage))
+
+
+```
+
+As this graph displays, the number of streamers that are partnered is far greater than non-partnered (97.8% partnered). Since non-partnered streamers  are underrepresented in this dataset, the results from this research might not be applicable to a streamer who aren't involved in the Twitch partnership program. 
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+twitch_data <- twitch %>%
+  rename(
+    watch_time = `Watch time(Minutes)`,
+    stream_time = `Stream time(minutes)`,
+    peak_viewers = `Peak viewers`,
+    average_viewers = `Average viewers`,
+    followers_gained = `Followers gained`,
+    views_gained = `Views gained`
+  ) %>%
+  mutate(bin_mature = case_when(
+    Mature == TRUE ~ 1,
+    Mature == FALSE ~ 0
+  ) )%>%
+mutate(bin_mature = as.factor(bin_mature))
+
+```
+
+## Exploring Relationship Between Followers and Total Watch Time
+
+**Regression Model of Followers and Total Watch Time**
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+ggplot(twitch_data,aes(y = Followers/1000, x = watch_time/60/24))+
+  geom_point()+
+  ylab("Number of Followers (in Thousands)")+
+  xlab("Watch Time (in Days)")+
+  ggtitle("Regression Model of Followers and Total Watch Time")+
+  scale_x_log10()+
+  scale_y_log10() +
+  geom_smooth(se=FALSE) +
+  geom_smooth(method="lm", se=FALSE, color="magenta")
+```
+
+**This linear regression plot shows that there is a linear relationship between the followers and watch time, as a magenta line. The blue line represents a trend line between followers and watch time.  We want to find out how strong the linear relationship is between the followers and watch time. **
+
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE,include=FALSE}
+cor.test(twitch_data$Followers, twitch_data$watch_time)
+lm1 = lm(twitch_data$Followers~twitch_data$watch_time, twitch_data)
+summary(lm1)
+
+```
+
+We ran cor.test() on Followers and Watch Time and received a correlation coefficient of 0.6202339 and p-value of less than 2.2e-16.We also calculated our coefficient value of 9.077e-04.
+
+**Because the correlation between follower and watch time presents a value of 0.62, the linear relationship between followers and watch time is relatively moderate to weak, but there is a linear relationship present.  **
+
+
+**The p-value for this cor test is less than 2.2e-16(less than 0.05),so there's a strong evidence that the slope is statistically significant.Assume this is a good fit of a linear regression model, the number of follower will increase 9.077e-04 thousand as watch time increases by 1 day**
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+twitch4 <- twitch_data %>%
+  drop_na()%>%
+  add_residuals(lm1) %>%
+  add_predictions(lm1)
+ggplot(twitch4, aes(x=watch_time/60/24, y =resid)) +
+  geom_point() +
+  scale_x_log10() +
+    xlab("Watch Time (in Days)") +
+  ylab("Residuals") +
+  ggtitle("Residuals Plot of Watch Time")+
+  geom_hline(aes(yintercept=0), color="red", linetype = "dashed")
+```
+
+**The residuals plot does not resemble random noise. This indicates that even though a linear relationship is present between Followers and Watch Time, it is not necessarily the strongest model to represent it. It appears for long watch times, the residual increases making it not the best model **
+
+
+
+## Exploring Relationship Between Followers and Average Viewers
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+ggplot(twitch_data,aes(y = Followers/1000, x = average_viewers/1000))+
+  geom_point()+
+  ylab("Number of Followers (in Thousands)")+
+  xlab("Average Viewers (in Thousands)")+
+  ggtitle("Regression Model of Followers and Average Viewers")+
+  scale_x_log10() +
+  scale_y_log10() +
+  geom_smooth(se=FALSE) +
+  geom_smooth(method="lm", se=FALSE, color="magenta")
+```
+
+**This linear regression plot shows that there is a linear relationship between the followers and average viewers as a magenta line. Utilizing the correlation test we can calculate the correlation coefficient. The closer this correlation coefficient is to 1, the stronger the linear relationship between the variables.**
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE,include=FALSE}
+cor.test(twitch_data$Followers, twitch_data$average_viewers)
+lm2 = lm(twitch_data$Followers~twitch_data$average_viewers, twitch_data)
+summary(lm2)
+```
+Again, we determined our correlation coefficient of 0.4283032 and p-value of less than 2.2e-16 by employing cor.test() on Folllowers and Average Viewers. We also calculated the slope of the linear regression model which is 4.076e+01. 
+
+**Since the correlation coefficient between followers and average viewers is 0.4283032, we see a rather weak association between number of followers and average viewers.**
+
+**However, The p-value for this cor test is less than 2.2e-16(less than 0.05), so there's a strong evidence that the slope of this regression line is statistically significant. Assume this is a good fit of a linear regression model, the number of follower will increase 4.076e+01 thousand as the number of average viewers increases by 1000. **
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+twitch5 <- twitch_data %>%
+  drop_na()%>%
+  add_residuals(lm2) %>%
+  add_predictions(lm2)
+twitch5%>%
+ggplot(aes(x=average_viewers/100, y =resid)) +
+  geom_point() +
+  scale_x_log10() +
+    xlab("Average Viewers") +
+  ylab("Residuals") +
+  ggtitle("Residuals Plot of Average Viewers")+
+  geom_hline(aes(yintercept=0), color="red", linetype = "dashed")
+```
+
+**The residuals plot does not resemble random noise, therefore a linear model is not an accurate representation of the relationship present between Followers and Average Viewers. The residuals appear to be increasing as average viewers increased. **
+
+
+## Exploring Relationship Between Followers and Views Gained
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+ggplot(twitch_data,aes(y = Followers/1000, x = views_gained/1000000))+
+  geom_point()+
+  ylab("Number of Followers(in Thousands)")+
+  xlab("Total Views Gained (in Millions)")+
+  ggtitle("Regression Model of Followers vs Total Views Gained")+
+  scale_x_log10() +
+  scale_y_log10() +
+  geom_smooth(se=FALSE) +
+  geom_smooth(method="lm", se=FALSE, color="magenta")
+```
+
+**This linear regression plot shows that there isn't a linear relationship between the followers and total views gained, as a magenta line. Utilizing the correlation test again we will determine the correlation coefficient to find out how strong the linear relationship is.**
+
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE,include=FALSE}
+cor.test(twitch_data$Followers, twitch_data$views_gained)
+lm5 = lm(twitch_data$Followers~twitch_data$views_gained, twitch_data)
+summary(lm5)
+```
+
+we determined our correlation coefficient of 0.2764665 and p-value of less than 2.2e-16 by employing cor.test() on Folllowers and total views gained. We also calculated the slope of the linear regression model which is 8.929e-03.
+
+**Since the correlation value between followers and total views gained is 0.2764665, we see a poor linear association between number of followers and total views gained.**
+
+**The p-value for this cor test is less than 2.2e-16(less than 0.05), so there's a strong evidence that the slope of this regression line is statistically significant. Assume this is a good fit of a linear regression model, the number of follower will increase 8.929e-03 thousand as the number of total views gained increases by 1 million.**
+
+```{r, echo = FALSE}
+resid_tot <- twitch_data %>%
+  drop_na()%>%
+  add_residuals(lm5) %>%
+  add_predictions(lm5)
+resid_tot%>%
+ggplot(aes(x=views_gained, y =resid)) +
+  geom_point() +
+  scale_x_log10() +
+    xlab("Views Gained") +
+  ylab("Residuals") +
+  ggtitle("Residuals Plot of Views Gained")+
+  geom_hline(aes(yintercept=0), color="red", linetype = "dashed")
+```
+
+**Since this residuals plot does not resemble random noise, a linear model is not the model of best fit for the relationship presented between Followers and Views Gained.**
+
+
+## Exploring the Relationship Between Followers and Stream Time
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+twitch %>%
+  select("Stream time(minutes)", "Followers", "Mature") %>%
+  rename(stream_time = `Stream time(minutes)`) %>%
+  mutate(stream_time = (stream_time/60/24),
+         Followers = Followers/1000) %>%
+
+  
+  ggplot(aes(x = stream_time, y = Followers)) +
+  geom_point(position = position_jitter(width=.25,height=0), alpha = .5, ) +
+  geom_smooth(method = "lm", se = FALSE,  color = "magenta") +
+  geom_smooth(se = FALSE)+
+  xlab("Total Stream Time (in Days)")+
+  scale_x_continuous( limits=c(0, 200)) +
+   scale_y_continuous( limits=c(0, 1500)) +
+  ylab("Followers  (in Thousands)") +
+  ggtitle ("Scatterplot of Followers vs. Total Stream Time with a Linear Model Fitted")
+
+
+```
+
+**There doesn't appear be an overly very strong linear relationship between Followers and Total Stream Time. Since the blue trend line has a slight curve pattern, might indicate that a quadratic fit would be better.However, the data is scattered in a way where there may be no perfect statistical model given the stream time.**
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+residuals<- twitch %>%
+  select("Stream time(minutes)", "Followers", "Mature") %>%
+  rename(stream_time = `Stream time(minutes)`) %>%
+  mutate(stream_time = (stream_time/60/24),
+         Followers = Followers/1000) 
+ add_residuals(data = residuals, model = lm(Followers~stream_time, data = residuals)) %>%
+   
+  ggplot(aes(x = stream_time, y = resid)) +
+  geom_point()  +
+   ylab("Residuals") +
+  xlab("Total Stream Time (in Days)") +
+  ggtitle("Residuals Plot of Total Stream Time") +
+  geom_hline(aes(yintercept=0), color="red", linetype = "dashed")
+
+
+
+```
+
+**The residuals plot indicates that a linear model is not a good fit for the data. The residuals do not resemble random noise indicating that a linear model is not the model of best fit for the relationship between Total Stream Time and Followers.**
+
+
+
+
+```{r, echo = FALSE,include=FALSE}
+cor.test(twitch$Followers,twitch$`Stream time(minutes)` )
+lm6 = lm(twitch$Followers~twitch$`Stream time(minutes)`)
+summary(lm6)
+```
+
+**Correlation**
+The correlation between total time spent streaming and number of followers is -0.09129851. One explanation of this low correlation value is that the correlation test ran on the variables is a linear correlation test. Since a quadratic model appears to be a better fit, this is why the correlation is so low.
+
+
+**slope of regression line**
+Our p-value for cor.test is 0.003858,so there's a strong evidence that the slope of this regression line is statistically significant. Assume this is a good fit of a linear regression model, the number of follower decreases by -8.602e-01 thousand as the number of total stream time increases by 1 day.
+
+
+
+
+
+
+**Even though those regression models are statistically significant, we don't see strong associations between followers and those different variables. Based on our result, we plan to explore whether maturity of streamers affects the number of their followers. To determine if there is a relationship between followers and maturity, we plan to conduct a hypothesis test. This hypothesis test will allow us to determine two things: Firstly, if there is a relationship present between followers and maturity, and secondly, how strong that relationship is.**
+
+**Step 1**
+
+Let:
+
+$$ X_1 =\text{ number of mature streamers }$$
+
+$$X_2 = \text{ number non-mature of streamers }$$
+
+$$\mu_1 = \text{population mean followers of mature streamers}$$
+
+$$\mu_2 = \text{population mean followers of non-mature steamers}$$
+
+**Step 2** 
+
+$$H0 : \mu_1 - \mu_2  = 0$$
+
+$$H1 : \mu_1 - \mu_2 ≠ 0$$
+**Step 3**
+
+
+$$T = \frac{ \left(\bar{X_1} - \bar{X_2} \right) - \left({\mu_1}_{0} - {\mu_2}_{0} \right)  }{S_p \sqrt{  \frac{1 }{n_1}  + \frac{1}{n_2} }}$$
+
+$$ S_p^2 = {  \frac{(n_1 - 1)S_1^2 + (n_2 - 1)S_2^2 }{n_1 + n_2 - 2}}$$
+**Step 4** 
+
+```{r, include = FALSE, echo = FALSE, message=FALSE}
+
+x1 <- twitch_data %>%
+  filter(Mature == 1) %>%
+  pull(Followers)
+
+x2 <- twitch_data %>%
+  filter(Mature == 0) %>%
+  pull(Followers)
+ 
+
+
+t.test(x=x2, y=x1, alternative = "two.sided", var.equal = FALSE)
+
+
+```
+ The two samples, mature and non-mature streamers, are independent from each other. Equal variance is satisfied for both of these populations. However, it is safe to assume that you do not have equal variance, in which case we must use the Welch t-test. The degrees of freedom is being approximated by our choice of Welch t-test.
+
+### **Our Welch test yielded the following values:**
+
+**p-value = 0.0004008**
+
+**confidence interval = (75812, 262429)**
+
+
+**A p-value of 0.0004 indicates that there is a statistically significant relationship between maturity.**There is a strong evidence that streamers who produce mature content are likely to gain more followers. 
+Our confidence interval indicates that mature streamers generally have 75,812 to 262,429 more followers than non-mature streamers.
+
+
+## Conclusion
+Although we can find the statistically significant coefficient for each regression model, almost all of the linear relationships present between our variables were relatively weak, compounding with our residual plots it is safe to assume that a different model would fit these relationships better. There doesn't appear to be any strong linear relationships between a streamer's number of followers and the most important stream statistics we mentioned throughout the project. However, we have determined that above all else, the content a streamer produces has a direct effect on the amount of followers that streamer has. For example, mature streamers have anywhere from 75,000 to 260,000 more followers on average than non-mature streamers. For any particular streamer, it is more important to focus on the content they are producing than the amount of content they produce. 
+
+
+
+**Potential Short-Comings**
+
+Although our slopes of regression models are statistically significant, they may not be practically significant because the correlation between variables are weak or moderate, rather than strong. Deeper understanding of potential quadratic, logarithmic or other models is required to determine which statistical model would fit our data best. Meaning, a simple linear model may not be always accurate in a streamers determination of whether or not they need to stream longer or shorter or attempt to gain more viewers in in turn increase their follower count. Other influences such as word of mouth or the streamers other social media influence may in turn affect their Twitch streaming performance. Also, content is incredibly important, and in this case, the content variables weren't specific enough to facet the streamers by their respective categories (i.e Role Playing, First Person Shooters, Battle Royale, etc.  )
+
+As well, there may be issues with the data that are still hidden. Given the individual who created the data set wasn't totally clear on the web scraping procedure, there may be hidden issues or biases when selecting these streamers.
+
+
+**Potential Future Directions for Additional Work**
+
+Since we only learn linear regression model in this semester, we are not able to find our the best statistical model to fit our data. After we learn some new models, we may be able to find out the best representation for our dataset and conduct a fairer test. We would encourage more data on the individual streamers that can better identify a quantitative reasoning why some streamers do better than others. 
